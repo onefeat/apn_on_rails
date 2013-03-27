@@ -19,8 +19,13 @@ class APN::Notification < APN::Base
   extend ::ActionView::Helpers::TextHelper
   serialize :custom_properties
 
+  def self.table_name # :nodoc:
+    "apn_notifications"
+  end
+
   belongs_to :device, :class_name => 'APN::Device'
-  has_one    :app,    :class_name => 'APN::App', :through => :device
+
+  attr_accessible :device_id
 
   # Stores the text alert message you want to send to the device.
   #
@@ -47,7 +52,7 @@ class APN::Notification < APN::Base
   #   apn.badge = 0
   #   apn.sound = true
   #   apn.custom_properties = {"typ" => 1}
-  #   apn.apple_hash # => {"aps" => {"badge" => 0, "sound" => "1.aiff"}, "typ" => "1"}
+  #   apn.apple_hast # => {"aps" => {"badge" => 0}}
   def apple_hash
     result = {}
     result['aps'] = {}
@@ -79,19 +84,61 @@ class APN::Notification < APN::Base
 
   # Creates the binary message needed to send to Apple.
   def message_for_sending
-    command = ['0'].pack('H') # Now, APN_ON_RAILS implements only "simple notification format".
-    token = self.device.to_hexa
-    token_length = [token.bytesize].pack('n')
-    payload = self.to_apple_json
-    payload_length = [payload.bytesize].pack('n')
-    message = command + token_length + token + payload_length + payload
-    raise APN::Errors::ExceededMessageSizeError.new(message) if payload.bytesize > 256
+    json = self.to_apple_json
+    message = "\0\0 #{self.device.to_hexa}\0#{json.length.chr}#{json}"
+    raise APN::Errors::ExceededMessageSizeError.new(message) if message.size.to_i > 256
     message
   end
 
-  def self.send_notifications
-    ActiveSupport::Deprecation.warn("The method APN::Notification.send_notifications is deprecated.  Use APN::App.send_notifications instead.")
-    APN::App.send_notifications
+  class << self
+
+    # Opens a connection to the Apple APN server and attempts to batch deliver
+    # an Array of notifications.
+    #
+    # This method expects an Array of APN::Notifications. If no parameter is passed
+    # in then it will use the following:
+    #   APN::Notification.all(:conditions => {:sent_at => nil})
+    #
+    # As each APN::Notification is sent the <tt>sent_at</tt> column will be timestamped,
+    # so as to not be sent again.
+    #
+    # This can be run from the following Rake task:
+    #   $ rake apn:notifications:deliver
+    def send_notifications(notifications = APN::Notification.all(:conditions => {:sent_at => nil}))
+      begin
+        APN::Connection.open_for_delivery do |conn, sock|
+          #devs = APN::Device.all
+          unset = APN::Notification.where(:sent_at => nil).order(:device_id, :created_at)
+          unset.each do |noty|
+            Rails.logger.debug "Sending notification ##{noty.id}"
+            puts "Sending notification ##{noty.id}"
+            begin
+              conn.write(noty.message_for_sending)
+              noty.sent_at = Time.now
+              noty.save
+            rescue APN::Errors::ExceededMessageSizeError
+              noty.sent_at = Time.now
+              noty.save
+            rescue => e
+              Rails.logger.error "Cannot send notification ##{noty.id}: " + e.message
+              puts "Cannot send notification ##{noty.id}: " + e.message
+              #noty.device.delete if noty.device
+              noty.sent_at = Time.now
+              noty.save
+              return if e.message == "Broken pipe"
+            end
+          end
+        end
+      rescue Exception => e
+        log_connection_exception(e)
+      end
+    end
+
+  end # class << self
+
+  protected
+  def self.log_connection_exception(ex)
+    puts ex.message
   end
 
 end # APN::Notification

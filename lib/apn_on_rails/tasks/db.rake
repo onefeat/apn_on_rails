@@ -8,10 +8,6 @@ This task no longer exists. Please generate the migrations like this:
 
 $ ruby script/generate apn_migrations
 
-or
-
-$ rails g apn_on_rails:install
-
 Then just run the migrations like you would normally:
 
 $ rake db:migrate

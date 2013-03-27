@@ -1,23 +1,21 @@
 require File.join(File.dirname(__FILE__), '..', '..', '..', '..', 'spec_helper.rb')
 
 describe APN::Notification do
-
+  
   describe 'alert' do
-
+    
     it 'should trim the message to 150 characters' do
       noty = APN::Notification.new
       noty.alert = 'a' * 200
       noty.alert.should == ('a' * 147) + '...'
     end
-
+    
   end
-
+  
   describe 'apple_hash' do
-
+    
     it 'should return a hash of the appropriate params for Apple' do
       noty = APN::Notification.first
-      noty.apple_hash.should == {"aps" => {"badge" => 5, "sound" => "my_sound.aiff", "alert" => "Hello!"},"typ" => "1"}
-      noty.custom_properties = nil
       noty.apple_hash.should == {"aps" => {"badge" => 5, "sound" => "my_sound.aiff", "alert" => "Hello!"}}
       noty.badge = nil
       noty.apple_hash.should == {"aps" => {"sound" => "my_sound.aiff", "alert" => "Hello!"}}
@@ -28,67 +26,56 @@ describe APN::Notification do
       noty.sound = true
       noty.apple_hash.should == {"aps" => {"sound" => "1.aiff"}}
     end
-
+    
   end
-
+  
   describe 'to_apple_json' do
-
+    
     it 'should return the necessary JSON for Apple' do
       noty = APN::Notification.first
-      noty.to_apple_json.should be_same_meaning_as %{{"typ":"1","aps":{"badge":5,"sound":"my_sound.aiff","alert":"Hello!"}}}
+      noty.to_apple_json.should == %{{"aps":{"badge":5,"sound":"my_sound.aiff","alert":"Hello!"}}}
     end
-
+    
   end
-
+  
   describe 'message_for_sending' do
-
-    describe 'should create a binary message to be sent to Apple' do
-      subject {
-        noty = APN::Notification.first
-        noty.custom_properties = nil
-        noty.device = DeviceFactory.new(:token => token)
-        noty.message_for_sending
-      }
-      let(:token) { '5gxadhy6 6zmtxfl6 5zpbcxmw ez3w7ksf qscpr55t trknkzap 7yyt45sc g6jrw7qz' }
-      let(:device_token_binary_size) { [token.delete(' ')].pack('H*').size }
-      let(:token_part_header_length) { 1 + 2 } # Command length(1 byte) + Token length(2 byte)
-      let(:payload_part_header_length) { 2 }   # Payload length(2 byte)
-      let(:boundaly_between_binary_and_payload) { token_part_header_length + device_token_binary_size + payload_part_header_length }
-
-      it 'should eq each binary part' do
-        subject[0...boundaly_between_binary_and_payload].should == fixture_value('message_for_sending.bin')[0...boundaly_between_binary_and_payload]
-      end
-
-      it 'should be same meaning as each payload part' do
-        subject[boundaly_between_binary_and_payload..-1].should be_same_meaning_as fixture_value('message_for_sending.bin')[boundaly_between_binary_and_payload..-1]
-      end
+    
+    it 'should create a binary message to be sent to Apple' do
+      noty = APN::Notification.first
+      noty.device = DeviceFactory.new(:token => '5gxadhy6 6zmtxfl6 5zpbcxmw ez3w7ksf qscpr55t trknkzap 7yyt45sc g6jrw7qz')
+      noty.message_for_sending.should == fixture_value('message_for_sending.bin')
     end
-
+    
     it 'should raise an APN::Errors::ExceededMessageSizeError if the message is too big' do
       noty = NotificationFactory.new(:device_id => DeviceFactory.create, :sound => true, :badge => nil)
-      noty.stub(:to_apple_json).and_return('_' * 257)
+      noty.send(:write_attribute, 'alert', 'a' * 183)
       lambda {
         noty.message_for_sending
       }.should raise_error(APN::Errors::ExceededMessageSizeError)
     end
-
-    it 'should not raise any error if the payload is not too big' do
-      noty = NotificationFactory.new(:device_id => DeviceFactory.create, :sound => true, :badge => nil)
-      noty.stub(:to_apple_json).and_return('_' * 256)
-      lambda {
-        noty.message_for_sending
-      }.should_not raise_error
-    end
-
+    
   end
-
+  
   describe 'send_notifications' do
-
-    it 'should warn the user the method is deprecated and call the corresponding method on APN::App' do
-      ActiveSupport::Deprecation.should_receive(:warn)
-      APN::App.should_receive(:send_notifications)
-      APN::Notification.send_notifications
+    
+    it 'should send the notifications in an Array' do
+      
+      notifications = [NotificationFactory.create, NotificationFactory.create]
+      notifications.each_with_index do |notify, i|
+        notify.stub(:message_for_sending).and_return("message-#{i}")
+        notify.should_receive(:sent_at=).with(instance_of(Time))
+        notify.should_receive(:save)
+      end
+      
+      ssl_mock = mock('ssl_mock')
+      ssl_mock.should_receive(:write).with('message-0')
+      ssl_mock.should_receive(:write).with('message-1')
+      APN::Connection.should_receive(:open_for_delivery).and_yield(ssl_mock, nil)
+      
+      APN::Notification.send_notifications(notifications)
+      
     end
+    
   end
-
+  
 end

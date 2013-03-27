@@ -1,5 +1,5 @@
 require 'rubygems'
-require 'rspec'
+require 'spec'
 require 'action_view'
 
 Dir.glob(File.join(File.dirname(__FILE__), 'extensions', '*.rb')).sort.each do |f|
@@ -10,38 +10,30 @@ require File.join(File.dirname(__FILE__), 'active_record', 'setup_ar.rb')
 
 require File.join(File.dirname(__FILE__), '..', 'lib', 'apn_on_rails')
 
-# Dir.glob(File.join(File.dirname(__FILE__), 'factories', '*.rb')).sort.each do |f|
-#   require f
-# end
-
-require File.join(File.dirname(__FILE__), 'factories', 'app_factory.rb')
-require File.join(File.dirname(__FILE__), 'factories', 'device_factory.rb')
-require File.join(File.dirname(__FILE__), 'factories', 'group_factory.rb')
-require File.join(File.dirname(__FILE__), 'factories', 'device_grouping_factory.rb')
-require File.join(File.dirname(__FILE__), 'factories', 'group_notification_factory.rb')
-require File.join(File.dirname(__FILE__), 'factories', 'notification_factory.rb')
-require File.join(File.dirname(__FILE__), 'factories', 'pull_notification_factory.rb')
+Dir.glob(File.join(File.dirname(__FILE__), 'factories', '*.rb')).sort.each do |f|
+  require f
+end
 
 configatron.apn.cert = File.expand_path(File.join(File.dirname(__FILE__), 'rails_root', 'config', 'apple_push_notification_development.pem'))
 
-RSpec.configure do |config|
-
+Spec::Runner.configure do |config|
+  
   config.before(:all) do
-
+    
   end
-
+  
   config.after(:all) do
-
+    
   end
-
+  
   config.before(:each) do
 
   end
-
+  
   config.after(:each) do
-
+    
   end
-
+  
 end
 
 def fixture_path(*name)
@@ -49,11 +41,7 @@ def fixture_path(*name)
 end
 
 def fixture_value(*name)
-  if RUBY_VERSION =~ /^1\.8/
-    File.read(fixture_path(*name))
-  else
-    File.read(fixture_path(*name), :encoding  => 'BINARY')
-  end
+  return File.read(fixture_path(*name))
 end
 
 def write_fixture(name, value)
@@ -65,10 +53,4 @@ def apn_cert
 end
 
 class BlockRan < StandardError
-end
-
-RSpec::Matchers.define :be_same_meaning_as do |expected|
-  match do |actual|
-    ActiveSupport::JSON.decode(actual) == ActiveSupport::JSON.decode(expected)
-  end
 end

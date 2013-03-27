@@ -10,13 +10,13 @@ module APN
       # has received feedback from Apple. Each APN::Device will
       # have it's <tt>feedback_at</tt> accessor marked with the time
       # that Apple believes the device de-registered itself.
-      def devices(cert, &block)
+      def devices(&block)
         devices = []
-        return if cert.nil? 
-        APN::Connection.open_for_feedback({:cert => cert}) do |conn, sock|
-          while line = conn.read(38)   # Read 38 bytes from the SSL socket
+        APN::Connection.open_for_feedback do |conn, sock|
+          while line = sock.gets   # Read lines from the socket
+            line.strip!
             feedback = line.unpack('N1n1H140')
-            token = feedback[2].strip
+            token = feedback[2].scan(/.{0,8}/).join(' ').strip
             device = APN::Device.find(:first, :conditions => {:token => token})
             if device
               device.feedback_at = Time.at(feedback[0])
@@ -28,10 +28,23 @@ module APN
         return devices
       end # devices
       
+      # Retrieves a list of APN::Device instnces from Apple using
+      # the <tt>devices</tt> method. It then checks to see if the
+      # <tt>last_registered_at</tt> date of each APN::Device is
+      # before the date that Apple says the device is no longer
+      # accepting notifications then the device is deleted. Otherwise
+      # it is assumed that the application has been re-installed
+      # and is available for notifications.
+      # 
+      # This can be run from the following Rake task:
+      #   $ rake apn:feedback:process
       def process_devices
-        ActiveSupport::Deprecation.warn("The method APN::Feedback.process_devices is deprecated.  Use APN::App.process_devices instead.")
-        APN::App.process_devices
-      end
+        APN::Feedback.devices.each do |device|
+          if device.last_registered_at < device.feedback_at
+            device.destroy
+          end
+        end
+      end # process_devices
       
     end # class << self
     
