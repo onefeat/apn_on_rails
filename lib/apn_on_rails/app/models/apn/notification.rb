@@ -117,6 +117,7 @@ class APN::Notification < APN::Base
               noty.sent_at = Time.now
               noty.save
             rescue APN::Errors::ExceededMessageSizeError
+              puts "Notification too long, cannot be sent"
               noty.sent_at = Time.now
               noty.save
             rescue => e
