@@ -12,7 +12,8 @@ class APN::Device < APN::Base
 
   belongs_to :user
   has_many :notifications, :class_name => 'APN::Notification', :dependent => :destroy
-  has_many :unsent_notifications, :class_name => 'APN::Notification', :conditions => 'sent_at is null'
+  #has_many :unsent_notifications, :class_name => 'APN::Notification', :conditions => 'sent_at is null'
+  has_many :unsent_notifications, -> { where sent_as: nil }, :class_name => 'APN::Notification'
 
   validates :token, :presence => true, :length => { :maximum => 64 }, :uniqueness => true
 
